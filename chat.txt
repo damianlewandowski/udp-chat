@@ -1,0 +1,101 @@
+/* Client of the chat program using UDP protocol */
+
+#include <sys/types.h>              /* definitions for required types */
+#include <sys/socket.h>             /* socket() */
+#include <stdio.h>                  /* printf(), perror(), fgets() */
+#include <stdlib.h>                 /* atoi() */
+#include <netdb.h>                  /* gethostbyname(), struct sockaddr_in */
+#include <strings.h>                /* bzero() */
+#include <arpa/inet.h>              /* inet_addr() */
+#include <string.h>
+#include <unistd.h>                 /* fork() */
+
+int main(int argc, char **argv) {
+
+    /* Check the number of cmd arguments */
+    if(argc != 3) {
+        printf("Usage:\tclient <host> <port>\n");
+        return -1;
+    }
+
+    char *hostname = argv[1];
+    int portno = atoi(argv[2]); /* atoi: converts string into an int */
+
+    /* Get the hostent struct for a host  */
+    struct hostent *host = gethostbyname(hostname);
+    struct in_addr **adrs = (struct in_addr**)host->h_addr_list;
+    if(host == NULL) {
+        perror("host");
+        return -1;
+    }
+
+    /* Address family, port and internet address */
+    struct sockaddr_in client_address;
+    /* Zero everything */
+    bzero((char *)&client_address, sizeof(client_address));
+    /* Define address family, port and internet address */
+    client_address.sin_family = AF_INET;
+    client_address.sin_port = htons(portno);
+    client_address.sin_addr.s_addr = inet_ntoa(*adrs[0]);
+    printf("Address: %s", client_address.sin_addr.s_addr);
+
+    int client_address_length = sizeof(client_address);
+
+    /* Create UDP socket using IPv4 addresses */
+    int client_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(client_fd < 0) {
+        perror("client_fd");
+        return -1;
+    }
+
+    /* Bind UDP socket */
+    if(bind(client_fd, (const struct sockaddr *)&client_address, client_address_length) < 0) {
+        perror("bind");
+        return -1;
+    }
+
+    /* Buffer for sending messages */
+    char out_buf[1024];
+    /* Buffer for receiving messages */
+    char in_buf[1024];
+
+    int success_send;    /* For checking if sending a message was successful */
+    int success_receive; /* For checking if message was received successfully */
+    pid_t pid = fork();
+    if(pid == -1) {
+        perror("fork");
+        return -1;
+    }
+    while(1) {
+        printf("--> ");
+
+        /* If pid = child's pid */
+        if (pid == 0) {
+            /* Get input from the user into output buffer */
+            fgets(out_buf, sizeof(out_buf), stdin);
+
+            /* Send a message to the client */
+            success_send = sendto(client_fd, out_buf, strlen(out_buf), 0, (const struct sockaddr *) &client_address,
+                                  client_address_length);
+            if (success_send < 0) {
+                perror("sendto");
+                return -1;
+            }
+        } else {
+            /* Receive a message from the client into input buffer */
+            success_receive = recvfrom(client_fd, in_buf, strlen(in_buf), 0, (struct sockaddr *) &client_address,
+                                       (socklen_t *) &client_address_length);
+            if (success_receive < 0) {
+                perror("recvfrom");
+                return -1;
+            }
+
+            printf("\n<--%s\n", in_buf);
+        }
+    }
+
+
+    printf("\nweee\n");
+
+    return 0;
+}
